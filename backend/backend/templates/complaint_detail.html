@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+{% block title %}Complaint{% endblock %}
+{% block page_id %}complaint-detail{% endblock %}
+
+{% block content %}
+<div class="container">
+  <div class="page-head">
+    <a href="/my-complaints" class="muted" style="font-weight:600">← My complaints</a>
+    <h1 id="title" style="margin-top:12px">Loading…</h1>
+    <div class="row" id="meta" style="margin-top:12px"></div>
+  </div>
+
+  <div class="layout-2" style="margin-bottom:var(--s8)">
+    <div style="display:grid;gap:var(--s5)">
+      <section class="card"><h3 style="margin-bottom:8px">Description</h3><p id="desc" class="muted complaint-description"></p><img id="img" alt="Attached evidence" style="margin-top:16px;border-radius:12px;max-height:280px" hidden></section>
+      <section class="card"><h3 style="margin-bottom:var(--s4)">Staff updates</h3><div id="updates"></div></section>
+      <section class="card" id="feedbackCard" hidden>
+        <h3>How did we do?</h3>
+        <p class="muted" style="margin:6px 0 var(--s4)">This complaint is resolved. Tell us if the outcome worked for you.</p>
+        <form id="fbForm">
+          <div class="field"><span class="label" id="rl">Rating</span>
+            <div class="seg" role="radiogroup" aria-labelledby="rl">
+              {% for n in range(1,6) %}<input type="radio" name="rating" id="r{{n}}" value="{{n}}"><label for="r{{n}}">{{n}} ★</label>{% endfor %}
+            </div></div>
+          <div class="field"><label for="fbText">Comments</label><textarea class="textarea" id="fbText" name="comment" maxlength="1000" style="min-height:100px" placeholder="Anything we could do better?"></textarea></div>
+          <div class="row"><button class="btn btn-primary" type="submit">Send feedback</button><button class="btn btn-secondary" type="button" id="reopen">Not resolved – reopen</button></div>
+        </form>
+      </section>
+    </div>
+
+    <aside class="card" style="position:sticky;top:96px"><h3 style="margin-bottom:var(--s4)">Status timeline</h3><ol class="tl" id="timeline"></ol></aside>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(async () => {
+  const { API, $, esc, fmtDate, fmtDateTime, priorityBadge, badge, STAGES, stageIndex, toast, emptyState, errorState } = HX;
+  const id = location.pathname.split("/").filter(Boolean)[1];
+  try {
+    /* Expected /api/complaints/<id>:
+       { id,title,description,category,organization,location,priority,status,created_at,updated_at,image_url,
+         history:[{status,at}], updates:[{author,message,at}], feedback_submitted:bool } */
+    const c = await API.get("/api/complaints/" + encodeURIComponent(id));
+    document.title = c.title + " · ComplaintLens";
+    $("#title").textContent = c.title;
+    $("#meta").innerHTML = `<span class="badge">#${esc(c.id)}</span>${priorityBadge(c.priority)}${badge(c.status)}<span class="li-meta">${esc(c.organization || "")}${c.location ? " · " + esc(c.location) : ""} · Submitted ${fmtDate(c.created_at)} · Updated ${fmtDate(c.updated_at)}</span>`;
+    $("#desc").textContent = c.description || "";
+    if (c.image_url) { $("#img").src = c.image_url; $("#img").hidden = false; }
+
+    const cur = stageIndex(c.status);
+    const when = {}; (c.history || []).forEach((h) => (when[HX.slug(h.status)] = h.at));
+    $("#timeline").innerHTML = STAGES.map((s, i) => `<li class="${i < cur ? "done" : i === cur ? "current done" : ""}"><div class="li-title">${s}</div><div class="when">${when[HX.slug(s)] ? fmtDateTime(when[HX.slug(s)]) : i > cur ? "Pending" : ""}</div></li>`).join("");
+
+    $("#updates").innerHTML = (c.updates || []).length ? c.updates.map((u) => `<div class="list-item" style="display:block"><div class="li-meta">${esc(u.author || "Staff")} · ${fmtDateTime(u.at)}</div><p style="margin-top:4px">${esc(u.message)}</p></div>`).join("") : emptyState("No updates yet", "Staff updates will appear here.");
+
+    if (HX.slug(c.status) === "resolved" && !c.feedback_submitted) $("#feedbackCard").hidden = false;
+
+    $("#fbForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      if (!fd.get("rating")) {
+        toast("Please choose a rating", "error");
+        $("#r1").focus();
+        return;
+      }
+      const submit = e.submitter || e.target.querySelector('[type="submit"]');
+      submit.disabled = true;
+      submit.classList.add("is-loading");
+      try {
+        await API.post(`/api/complaints/${encodeURIComponent(id)}/feedback`, { rating: +fd.get("rating"), comment: fd.get("comment") });
+        toast("Thanks for your feedback");
+        $("#feedbackCard").hidden = true;
+      } catch (err) {
+        toast(err.message, "error");
+      } finally {
+        submit.disabled = false;
+        submit.classList.remove("is-loading");
+      }
+    });
+    $("#reopen").addEventListener("click", async () => {
+      const button = $("#reopen");
+      button.disabled = true;
+      button.classList.add("is-loading");
+      try {
+        await API.post(`/api/complaints/${encodeURIComponent(id)}/reopen`, {});
+        toast("Complaint reopened");
+        setTimeout(() => location.reload(), 600);
+      } catch (err) {
+        toast(err.message, "error");
+        button.disabled = false;
+        button.classList.remove("is-loading");
+      }
+    });
+  } catch (e) {
+    $("#title").textContent = "Complaint unavailable";
+    $("#desc").textContent = e.message || "The complaint could not be loaded. Please try again.";
+  }
+})();
+</script>
+{% endblock %}

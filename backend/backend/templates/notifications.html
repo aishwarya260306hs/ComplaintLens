@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}Notifications{% endblock %}
+{% block page_id %}notifications{% endblock %}
+
+{% block content %}
+<div class="container" style="max-width:760px">
+  <div class="page-head row between">
+    <div><p class="eyebrow">Inbox</p><h1>Notifications</h1></div>
+    <button class="btn btn-secondary btn-sm" id="markAll">Mark all read</button>
+  </div>
+  <div class="card" id="list" style="margin-bottom:var(--s8)" aria-live="polite"></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(async () => {
+  const { API, $, esc, fmtDateTime, skeleton, emptyState, errorState, toast } = HX;
+  const list = $("#list");
+  async function load() {
+    list.innerHTML = skeleton(3);
+    try {
+      /* Expected: { items:[{id,message,created_at,read,link}] } */
+      const d = await API.get("/api/notifications");
+      list.innerHTML = (d.items || []).length ? d.items.map((n) => {
+        const safeLink = typeof n.link === "string" && n.link.startsWith("/") && !n.link.startsWith("//") && !n.link.includes("\\") ? n.link : "";
+        const tag = safeLink ? "a" : "div";
+        return `
+        <${tag} class="list-item" ${safeLink ? `href="${esc(safeLink)}"` : ""}>
+          <div><div class="li-title" style="${n.read ? "font-weight:500;color:var(--muted)" : ""}">${esc(n.message)}</div><div class="li-meta">${fmtDateTime(n.created_at)}</div></div>
+          ${n.read ? "" : '<span class="badge open">New</span>'}
+        </${tag}>`;
+      }).join("") : emptyState("You are all caught up", "New updates on your complaints will show up here.");
+    } catch (e) { list.innerHTML = errorState(e); }
+  }
+  $("#markAll").addEventListener("click", async () => {
+    const button = $("#markAll");
+    button.disabled = true;
+    button.classList.add("is-loading");
+    try {
+      await API.post("/api/notifications/read", {});
+      const dot = $(".bell .dot");
+      if (dot) { dot.textContent = ""; dot.classList.remove("show"); dot.closest(".bell").setAttribute("aria-label", "Notifications"); }
+      toast("All notifications marked as read");
+      await load();
+    } catch (e) {
+      toast(e.message, "error");
+    } finally {
+      button.disabled = false;
+      button.classList.remove("is-loading");
+    }
+  });
+  load();
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,99 @@
+{
+  "dataset_name": "ComplaintLens organization directory sample",
+  "dataset_type": "sample_not_exhaustive",
+  "completeness": "Representative examples only; not a complete official directory.",
+  "updated_on": "2026-07-16",
+  "license_note": "Organization names and source links are provided for discovery. This is not a claim that source website content is openly licensed.",
+  "organizations": [
+    {
+      "dataset_id": "education-reva-university",
+      "name": "REVA University",
+      "sector": "education",
+      "city": "Bengaluru",
+      "state": "Karnataka",
+      "organization_type": "University",
+      "source_name": "REVA University official website",
+      "source_url": "https://www.reva.edu.in/"
+    },
+    {
+      "dataset_id": "education-iisc",
+      "name": "Indian Institute of Science",
+      "sector": "education",
+      "city": "Bengaluru",
+      "state": "Karnataka",
+      "organization_type": "Public research university",
+      "source_name": "Indian Institute of Science official website",
+      "source_url": "https://iisc.ac.in/about/general/"
+    },
+    {
+      "dataset_id": "education-university-of-delhi",
+      "name": "University of Delhi",
+      "sector": "education",
+      "city": "Delhi",
+      "state": "Delhi",
+      "organization_type": "Public university",
+      "source_name": "University of Delhi official website",
+      "source_url": "https://www.du.ac.in/"
+    },
+    {
+      "dataset_id": "healthcare-nimhans",
+      "name": "National Institute of Mental Health and Neuro Sciences",
+      "sector": "healthcare",
+      "city": "Bengaluru",
+      "state": "Karnataka",
+      "organization_type": "Public medical institute",
+      "source_name": "NIMHANS official website",
+      "source_url": "https://nimhans.ac.in/about-us/"
+    },
+    {
+      "dataset_id": "healthcare-aiims-new-delhi",
+      "name": "All India Institute of Medical Sciences, New Delhi",
+      "sector": "healthcare",
+      "city": "New Delhi",
+      "state": "Delhi",
+      "organization_type": "Public medical institute",
+      "source_name": "AIIMS New Delhi official website",
+      "source_url": "https://aiims.edu/"
+    },
+    {
+      "dataset_id": "healthcare-tata-memorial-centre",
+      "name": "Tata Memorial Centre",
+      "sector": "healthcare",
+      "city": "Mumbai",
+      "state": "Maharashtra",
+      "organization_type": "Public cancer care and research institution",
+      "source_name": "Tata Memorial Centre official website",
+      "source_url": "https://tmc.gov.in/"
+    },
+    {
+      "dataset_id": "government-bengaluru-urban-district",
+      "name": "Bengaluru Urban District Administration",
+      "sector": "government",
+      "city": "Bengaluru",
+      "state": "Karnataka",
+      "organization_type": "District administration",
+      "source_name": "Bengaluru Urban District official website",
+      "source_url": "https://bengaluruurban.nic.in/en/"
+    },
+    {
+      "dataset_id": "government-ksrtc",
+      "name": "Karnataka State Road Transport Corporation",
+      "sector": "government",
+      "city": "Bengaluru",
+      "state": "Karnataka",
+      "organization_type": "State public transport corporation",
+      "source_name": "KSRTC official website",
+      "source_url": "https://ksrtc.karnataka.gov.in/en"
+    },
+    {
+      "dataset_id": "government-bbmp",
+      "name": "Bruhat Bengaluru Mahanagara Palike",
+      "sector": "government",
+      "city": "Bengaluru",
+      "state": "Karnataka",
+      "organization_type": "Municipal corporation",
+      "source_name": "BBMP official website",
+      "source_url": "https://bbmp.gov.in/"
+    }
+  ]
+}

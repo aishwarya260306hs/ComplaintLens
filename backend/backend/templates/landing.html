@@ -1,0 +1,138 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Complaint management{% endblock %}
+{% block page_id %}landing{% endblock %}
+
+{% block content %}
+<section class="hero hero-dark">
+  <div class="container hero-grid">
+    <div>
+      <span class="hero-pill">{{ icon('spark') }} AI-powered duplicate detection</span>
+      <h1 class="hero-title">Report an issue</h1>
+      <p class="lead">Report issues, discover recurring problems, and help organizations resolve what matters most.</p>
+      <div class="hero-ctas">
+        <a href="/complaints/new" class="btn btn-primary btn-lg">Raise a Complaint</a>
+        <a href="/organizations" class="btn btn-secondary btn-lg">Explore Organizations</a>
+      </div>
+    </div>
+
+    <!-- Original SVG illustration: complaints → grouped → prioritised -->
+    <div class="illus hero-illustration" aria-hidden="true">
+      <svg viewBox="0 0 480 400" fill="none">
+        <rect x="20" y="24" width="190" height="64" rx="14" fill="#fff" stroke="#e3e6ef" class="float"/>
+        <rect x="36" y="42" width="100" height="8" rx="4" fill="#0b1020"/><rect x="36" y="58" width="140" height="6" rx="3" fill="#c9cfe3"/>
+        <circle cx="186" cy="44" r="6" fill="#e5384f"/>
+
+        <rect x="40" y="110" width="190" height="64" rx="14" fill="#fff" stroke="#e3e6ef" class="float d2"/>
+        <rect x="56" y="128" width="90" height="8" rx="4" fill="#0b1020"/><rect x="56" y="144" width="130" height="6" rx="3" fill="#c9cfe3"/>
+        <circle cx="206" cy="130" r="6" fill="#e29a0d"/>
+
+        <rect x="14" y="196" width="190" height="64" rx="14" fill="#fff" stroke="#e3e6ef" class="float d3"/>
+        <rect x="30" y="214" width="110" height="8" rx="4" fill="#0b1020"/><rect x="30" y="230" width="120" height="6" rx="3" fill="#c9cfe3"/>
+        <circle cx="180" cy="216" r="6" fill="#e5384f"/>
+
+        <!-- AI node -->
+        <path d="M230 60 C280 60 280 200 300 200 M250 142 C275 142 280 200 300 200 M210 228 C260 228 270 200 300 200" stroke="#7a3cff" stroke-width="2.5" stroke-dasharray="5 6"/>
+        <circle cx="318" cy="200" r="34" fill="#0b1020"/>
+        <path d="M318 182l5 12 12 5-12 5-5 12-5-12-12-5 12-5z" fill="#fff"/>
+
+        <!-- Group card -->
+        <path d="M352 200h28" stroke="#2f5bff" stroke-width="3" stroke-linecap="round"/>
+        <rect x="380" y="150" width="86" height="100" rx="16" fill="#2f5bff"/>
+        <text x="423" y="190" text-anchor="middle" font-family="Inter, sans-serif" font-weight="800" font-size="26" fill="#fff">×3</text>
+        <rect x="394" y="204" width="58" height="8" rx="4" fill="#fff" fill-opacity=".7"/>
+        <rect x="394" y="220" width="40" height="8" rx="4" fill="#fff" fill-opacity=".45"/>
+
+        <!-- priority chips -->
+        <rect x="300" y="290" width="166" height="76" rx="16" fill="#fff" stroke="#e3e6ef"/>
+        <rect x="316" y="306" width="60" height="22" rx="11" fill="#fde8eb"/><text x="346" y="321" text-anchor="middle" font-family="Inter, sans-serif" font-weight="700" font-size="11" fill="#e5384f">HIGH</text>
+        <rect x="316" y="336" width="100" height="8" rx="4" fill="#c9cfe3"/>
+      </svg>
+    </div>
+  </div>
+</section>
+
+<section class="section alt" aria-labelledby="impactH">
+  <div class="container">
+    <div class="section-head">
+      <div><p class="eyebrow">Impact</p><h2 id="impactH">The platform in numbers</h2></div>
+      <span class="tag-sample" id="sampleTag" hidden>Sample statistics</span>
+    </div>
+    <div class="grid c3" id="statsGrid">
+      <div class="skel block"></div><div class="skel block"></div><div class="skel block"></div><div class="skel block"></div>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="how-it-works" aria-labelledby="howH">
+  <div class="container">
+    <div class="section-head"><div><p class="eyebrow">How it works</p><h2 id="howH">From complaint to resolution<br>in four steps</h2></div></div>
+    <div class="grid c4">
+      {% for n, t, d, i, c in [
+        ('01','Choose your organization','Pick your sector, organization and location.','building',''),
+        ('02','Submit your complaint','Describe the issue. Add a photo if it helps.','pen','purple'),
+        ('03','AI finds similar issues','Semantic matching surfaces related complaints for staff to review.','spark','green'),
+        ('04','Track progress and resolution','Follow every status change until it is resolved.','track','amber')] %}
+      <div class="card hover step" data-reveal>
+        <div class="step-num">{{ n }}</div>
+        <div class="icon-tile {{ c }}">{{ icon(i) }}</div>
+        <h3>{{ t }}</h3><p class="muted">{{ d }}</p>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+<section class="section alt" aria-labelledby="sectorsH">
+  <div class="container">
+    <div class="section-head">
+      <div><p class="eyebrow">Explore organizations</p><h2 id="sectorsH">Built for every sector</h2></div>
+      <a href="/organizations" class="btn btn-dark">See all {{ icon('arrow') }}</a>
+    </div>
+    <div class="grid c3" id="sectorGrid">
+      {# Sector categories are static links; organization results are loaded on the next page. #}
+      {% for key, name, desc, c in [
+        ('education','Education','Universities, colleges and schools.',''),
+        ('corporate','Corporate','Workplaces, offices and facilities.','purple'),
+        ('government','Government','Public services and civic departments.','green'),
+        ('healthcare','Healthcare','Hospitals, clinics and care centres.','amber'),
+        ('transport','Transport','Transit, roads and mobility services.',''),
+        ('housing','Housing','Residential societies and property.','purple')] %}
+      <div class="card hover" data-reveal>
+        <div class="icon-tile {{ c }}">{{ icon(key) }}</div>
+        <h3>{{ name }}</h3><p class="muted" style="margin:6px 0 18px">{{ desc }}</p>
+        <a class="btn btn-secondary btn-sm" href="/organizations?sector={{ key }}">Explore</a>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+<section class="section">
+  <div class="container">
+    <div class="cta-banner">
+      <div><h2 style="color:#fff">Spotted something wrong?</h2><p style="color:#c9cfe3;margin-top:8px">It takes less than two minutes.</p></div>
+      <a href="/complaints/new" class="btn btn-primary btn-lg">Raise a Complaint</a>
+    </div>
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(async () => {
+  const { API, esc, countUp, $ } = HX;
+  const grid = $("#statsGrid");
+  try {
+    // Public figures omit organizer-only similarity group analytics.
+    const s = await API.get("/api/stats");
+    const items = [["Complaints received", s.complaints], ["Resolved", s.resolved], ["Organizations", s.organizations]];
+    grid.innerHTML = items.map(([l]) => `<div class="card stat"><div class="num" data-n>0</div><div class="lbl">${esc(l)}</div></div>`).join("");
+    [...grid.querySelectorAll("[data-n]")].forEach((el, i) => countUp(el, Number(items[i][1]) || 0));
+    if (s.is_sample) $("#sampleTag").hidden = false;
+  } catch (e) {
+    grid.innerHTML = `<div class="notice warn" role="status" style="grid-column:1/-1">Live statistics are unavailable right now. Please try again later.</div>`;
+  }
+})();
+</script>
+{% endblock %}

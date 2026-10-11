@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% block title %}Complaint Submitted{% endblock %}
+{% block page_id %}analysis{% endblock %}
+
+{% block content %}
+<div class="container" style="max-width:900px">
+  <div class="page-head">
+    <div class="icon-tile green" style="width:64px;height:64px;border-radius:50%"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"/></svg></div>
+    <h1 style="font-size:clamp(2rem,5vw,3.4rem)">Complaint submitted.</h1>
+    <p class="muted" style="margin-top:10px">Reference <strong id="cid" style="color:var(--text)">…</strong>. Keep it handy to track progress.</p>
+  </div>
+
+  <section class="card" style="margin-bottom:var(--s5)">
+    <div class="row between"><h3>Progress</h3><div class="row" id="badges"></div></div>
+    <div class="track" id="track" aria-label="Complaint progress"></div>
+  </section>
+
+  <section class="card" style="margin-bottom:var(--s5)">
+    <div class="notice" style="margin:0 0 var(--s4)">
+      Similarity scores show how closely the wording and meaning match. They are <strong>not probabilities</strong>.
+      These are suggestions only and must be confirmed by authorised staff before complaints are grouped.
+    </div>
+    <div id="matches">{{ '' }}</div>
+  </section>
+
+  <section class="card" style="margin-bottom:var(--s8)">
+    <h3 style="margin-bottom:var(--s3)">What happens next</h3>
+    <ol class="tl" id="next"></ol>
+    <div class="row" style="margin-top:var(--s4)">
+      <a class="btn btn-primary" id="viewBtn" href="/my-complaints">View complaint</a>
+      <a class="btn btn-secondary" href="/my-complaints">My complaints</a>
+      <a class="btn btn-ghost" href="/complaints/new">Raise another</a>
+    </div>
+  </section>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(async () => {
+  const { API, $, esc, priorityBadge, badge, STAGES, stageIndex, skeleton, errorState, emptyState } = HX;
+  const id = location.pathname.split("/").filter(Boolean)[1];
+  $("#cid").textContent = "#" + id;
+  $("#viewBtn").href = "/complaints/" + id;
+  $("#matches").innerHTML = skeleton(2);
+
+  function label(score) {            // purely descriptive, never "probability"
+    if (score >= 0.80) return "Strong match";
+    if (score >= 0.65) return "Likely related";
+    return "Possibly related";
+  }
+  const renderTrack = (status) => {
+    const cur = stageIndex(status);
+    const nodes = ["Complaint Submitted", "AI Analysis", "Staff Review", "Resolution"];
+    const map = Math.min(Math.max(cur - 0, 0), 4); // 0..4
+    const idx = [0, 1, 2, 4];
+    $("#track").innerHTML = nodes.map((n, i) => {
+      const cls = idx[i] < map ? "done" : idx[i] === map || (i === 2 && map === 3) ? "current" : "";
+      return `<div class="node ${cls}"><div class="dot">${cls === "done" ? "✓" : i + 1}</div>${n}</div>`;
+    }).join("");
+  };
+
+  try {
+    /* Expected /api/complaints/<id>/analysis:
+       { id, status, priority, matches:[{group_id, group_title, complaint_id, title, score(0-1), location}] } */
+    const d = await API.get(`/api/complaints/${encodeURIComponent(id)}/analysis`);
+    $("#badges").innerHTML = priorityBadge(d.priority) + badge(d.status);
+    renderTrack(d.status);
+    const m = d.matches || [];
+    $("#matches").innerHTML = m.length ? m.map((x) => {
+      const pct = Math.round(x.score * 100);
+      return `<div class="list-item" style="display:block">
+        <div class="row between"><span class="li-title">${esc(x.group_title || x.title)}</span><span class="badge">${label(x.score)} · ${pct}%</span></div>
+        <div class="li-meta" style="margin:2px 0 8px">${esc(x.location || "")}</div>
+        <div class="meter"><i data-w="${pct}"></i></div>
+      </div>`;
+    }).join("") : emptyState("No similar complaints yet", "Yours appears to be a new issue. Staff will review it.");
+    requestAnimationFrame(() => document.querySelectorAll(".meter > i[data-w]").forEach((el) => (el.style.width = el.dataset.w + "%")));
+    $("#next").innerHTML = [
+      ["AI analysis complete", "Similar complaints have been suggested above.", "done"],
+      ["Staff review", "An authorised staff member checks the suggestions and confirms or rejects grouping.", "current"],
+      ["Work begins", "You will be notified when the status changes.", ""],
+      ["Resolution", "Once resolved, you can share feedback.", ""],
+    ].map(([t, s, c]) => `<li class="${c}"><div class="li-title">${t}</div><div class="muted" style="font-size:.9rem">${s}</div></li>`).join("");
+  } catch (e) { $("#matches").innerHTML = errorState(e); }
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}My Complaints{% endblock %}
+{% block page_id %}my-complaints{% endblock %}
+
+{% block content %}
+<div class="container">
+  <div class="page-head row between">
+    <div><p class="eyebrow">Track</p><h1>My complaints</h1></div>
+    <a href="/complaints/new" class="btn btn-primary btn-lg">Raise a Complaint</a>
+  </div>
+
+  <div class="filters" role="search">
+    <div class="search">{{ icon('search') }}<input class="input" id="q" placeholder="Search by ID or title" aria-label="Search complaints"></div>
+    <select class="select" id="fStatus" aria-label="Status"><option value="">All statuses</option><option>Submitted</option><option>Under AI Analysis</option><option>Awaiting Staff Review</option><option>In Progress</option><option>Resolved</option></select>
+    <select class="select" id="fPriority" aria-label="Priority"><option value="">All priorities</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option></select>
+    <select class="select" id="fCategory" aria-label="Category"><option value="">All categories</option></select>
+    <select class="select" id="fDate" aria-label="Date"><option value="">Any time</option><option value="7">Last 7 days</option><option value="30">Last 30 days</option><option value="90">Last 90 days</option></select>
+  </div>
+
+  <div id="list" style="margin-bottom:var(--s8)"></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(() => {
+  const { API, $, esc, fmtDate, priorityBadge, badge, debounce, skeleton, emptyState, errorState } = HX;
+  async function load() {
+    $("#list").innerHTML = skeleton(4);
+    try {
+      /* Expected: { items:[{id,title,organization,location,category,priority,status,created_at,updated_at}] } */
+      const d = await API.get("/api/complaints" + API.qs({ q: $("#q").value.trim(), status: $("#fStatus").value, priority: $("#fPriority").value, category: $("#fCategory").value, days: $("#fDate").value, mine: 1 }));
+      const items = d.items || [];
+      const cats = new Set([...$("#fCategory").options].map((o) => o.value));
+      items.forEach((i) => { if (i.category && !cats.has(i.category)) { $("#fCategory").add(new Option(i.category, i.category)); cats.add(i.category); } });
+      if (!items.length) { $("#list").innerHTML = emptyState("No complaints found", "Adjust your filters or raise a new complaint.", '<a class="btn btn-primary btn-sm" href="/complaints/new">Raise a Complaint</a>'); return; }
+      $("#list").innerHTML = `<div class="grid">` + items.map((c) => `
+        <a class="card hover row between" href="/complaints/${esc(c.id)}" style="gap:20px;align-items:stretch">
+          <div class="prio-bar ${esc(c.priority || "")}"></div>
+          <div style="flex:1;min-width:220px">
+            <div class="li-meta">#${esc(c.id)} · ${esc(c.category || "")}</div>
+            <h3 style="margin:2px 0 6px">${esc(c.title)}</h3>
+            <div class="li-meta">${esc(c.organization || "")}${c.location ? " · " + esc(c.location) : ""}</div>
+          </div>
+          <div style="text-align:right;display:flex;flex-direction:column;gap:8px;align-items:flex-end;justify-content:center">
+            <div class="row" style="gap:6px">${priorityBadge(c.priority)}${badge(c.status)}</div>
+            <div class="li-meta">Submitted ${fmtDate(c.created_at)} · Updated ${fmtDate(c.updated_at)}</div>
+          </div>
+        </a>`).join("") + `</div>`;
+    } catch (e) { $("#list").innerHTML = errorState(e); }
+  }
+  const dl = debounce(load, 250);
+  $("#q").addEventListener("input", dl);
+  ["fStatus", "fPriority", "fCategory", "fDate"].forEach((id) => $("#" + id).addEventListener("change", load));
+  load();
+})();
+</script>
+{% endblock %}

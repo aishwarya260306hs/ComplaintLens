@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Staff Dashboard{% endblock %}
+{% block page_id %}staff{% endblock %}
+
+{% block content %}
+<div class="container">
+  <div class="page-head row between">
+    <div><p class="eyebrow" id="orgName">Staff console</p><h1>Review &amp; resolve</h1></div>
+  </div>
+
+  <div class="grid c4" id="kpis" style="margin-bottom:var(--s5)"><div class="skel block"></div><div class="skel block"></div><div class="skel block"></div><div class="skel block"></div></div>
+
+  <div class="tabs" role="tablist">
+    <button role="tab" aria-selected="true" data-tab="groups">Complaint groups</button>
+    <button role="tab" aria-selected="false" data-tab="suggestions">Suggestions to review <span class="badge" id="sugCount">0</span></button>
+    <button role="tab" aria-selected="false" data-tab="high">High priority</button>
+  </div>
+
+  <div class="filters" id="groupFilters" style="grid-template-columns:2fr 1fr 1fr 1fr">
+    <div class="search">{{ icon('search') }}<input class="input" id="q" placeholder="Search groups" aria-label="Search groups"></div>
+    <select class="select" id="fStatus" aria-label="Status"><option value="">All statuses</option><option>Awaiting Staff Review</option><option>In Progress</option><option>Resolved</option></select>
+    <select class="select" id="fPriority" aria-label="Priority"><option value="">All priorities</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option></select>
+    <select class="select" id="fSort" aria-label="Sort"><option value="priority">Sort: priority</option><option value="count">Sort: most complaints</option><option value="updated">Sort: recently updated</option></select>
+  </div>
+
+  <div id="panel" style="margin-bottom:var(--s8)"></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(() => {
+  const { API, $, $$, esc, fmtDate, priorityBadge, badge, debounce, countUp, modal, toast, skeleton, emptyState, errorState } = HX;
+  let tab = "groups";
+
+  async function loadSummary() {
+    try {
+      /* Expected /api/staff/summary: { organization, total_groups, open, in_progress, resolved, high_priority, pending_suggestions } */
+      const s = await API.get("/api/staff/summary");
+      if (s.organization) $("#orgName").textContent = s.organization;
+      const k = [["Complaint groups", s.total_groups], ["Open issues", s.open], ["High priority", s.high_priority], ["Resolved", s.resolved]];
+      $("#kpis").innerHTML = k.map(([l], i) => `<div class="card kpi"><span class="num" data-n>0</span><span class="lbl">${l}</span></div>`).join("");
+      $$("[data-n]").forEach((el, i) => countUp(el, Number(k[i][1]) || 0));
+      $("#sugCount").textContent = s.pending_suggestions || 0;
+    } catch (e) { $("#kpis").innerHTML = ""; }
+  }
+
+  async function loadGroups(highOnly = false) {
+    $("#panel").innerHTML = skeleton(4);
+    try {
+      /* Expected /api/staff/groups: { items:[{id,title,count,location,priority,status,updated_at,pending_suggestions}] } */
+      const d = await API.get("/api/staff/groups" + API.qs({ q: $("#q").value.trim(), status: $("#fStatus").value, priority: highOnly ? "high" : $("#fPriority").value, sort: $("#fSort").value }));
+      const rows = d.items || [];
+      if (!rows.length) { $("#panel").innerHTML = emptyState("No groups match", "Try clearing your filters."); return; }
+      $("#panel").innerHTML = `<div class="table-wrap"><table class="t"><thead><tr><th>Group</th><th>Complaints</th><th>Location</th><th>Priority</th><th>Status</th><th>Updated</th><th></th></tr></thead><tbody>` +
+        rows.map((g) => `<tr>
+          <td><a class="li-title" href="/staff/groups/${esc(g.id)}">${esc(g.title)}</a>${g.pending_suggestions ? ` <span class="badge open">${g.pending_suggestions} to review</span>` : ""}</td>
+          <td>${esc(g.count)}</td><td>${esc(g.location || "—")}</td><td>${priorityBadge(g.priority)}</td><td>${badge(g.status)}</td><td>${fmtDate(g.updated_at)}</td>
+          <td><a class="btn btn-secondary btn-sm" href="/staff/groups/${esc(g.id)}">Open</a></td></tr>`).join("") + `</tbody></table></div>`;
+    } catch (e) { $("#panel").innerHTML = errorState(e); }
+  }
+
+  async function loadSuggestions() {
+    $("#panel").innerHTML = skeleton(3);
+    try {
+      /* Expected /api/staff/suggestions: { items:[{id, score, complaint:{id,title}, group:{id,title}, location}] } */
+      const d = await API.get("/api/staff/suggestions");
+      const items = d.items || [];
+      $("#sugCount").textContent = items.length;
+      if (!items.length) { $("#panel").innerHTML = emptyState("Nothing to review", "New AI suggestions will appear here."); return; }
+      $("#panel").innerHTML = `<div class="grid">` + items.map((s) => `
+        <div class="card" data-id="${esc(s.id)}">
+          <div class="row between"><span class="badge">Similarity ${Math.round(s.score * 100)}% · suggestion</span><span class="li-meta">${esc(s.location || "")}</span></div>
+          <p style="margin:12px 0 4px"><strong>${esc(s.complaint.title)}</strong> <span class="li-meta">#${esc(s.complaint.id)}</span></p>
+          <p class="muted" style="font-size:.9rem">may belong with <a href="/staff/groups/${esc(s.group.id)}" style="color:var(--blue);font-weight:700">${esc(s.group.title)}</a></p>
+          <div class="meter" style="margin:12px 0"><i style="width:${Math.round(s.score * 100)}%"></i></div>
+          <div class="row"><button class="btn btn-success btn-sm" data-act="confirm">Confirm grouping</button><button class="btn btn-secondary btn-sm" data-act="reject">Reject</button></div>
+        </div>`).join("") + `</div>`;
+    } catch (e) { $("#panel").innerHTML = errorState(e); }
+  }
+
+  $("#panel").addEventListener("click", async (e) => {
+    const b = e.target.closest("[data-act]"); if (!b) return;
+    const card = b.closest("[data-id]"); const act = b.dataset.act;
+    b.classList.add("is-loading");
+    try {
+      await API.post(`/api/staff/suggestions/${encodeURIComponent(card.dataset.id)}/${act}`, {});   // server verifies staff role + org
+      toast(act === "confirm" ? "Grouping confirmed" : "Suggestion rejected");
+      card.style.transition = "opacity .25s"; card.style.opacity = 0; setTimeout(() => { card.remove(); loadSummary(); }, 250);
+    } catch (err) { b.classList.remove("is-loading"); toast(err.message, "error"); }
+  });
+
+  function show(t) {
+    tab = t;
+    $$(".tabs button").forEach((b) => b.setAttribute("aria-selected", b.dataset.tab === t));
+    $("#groupFilters").hidden = t === "suggestions";
+    t === "suggestions" ? loadSuggestions() : loadGroups(t === "high");
+  }
+  $(".tabs").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) show(b.dataset.tab); });
+  $("#q").addEventListener("input", debounce(() => loadGroups(tab === "high")));
+  ["fStatus", "fPriority", "fSort"].forEach((id) => $("#" + id).addEventListener("change", () => loadGroups(tab === "high")));
+
+  loadSummary(); show("groups");
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,146 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Explore Organizations{% endblock %}
+{% block page_id %}select-org{% endblock %}
+
+{% block content %}
+<div class="container" style="max-width:920px">
+  <div class="page-head">
+    <p class="eyebrow">Get started</p>
+    <h1>Where is the issue?</h1>
+    <p class="muted" style="margin-top:12px">Four quick choices and you are in.</p>
+  </div>
+
+  <div class="stepper" aria-hidden="true"><div class="st" data-st="1"></div><div class="st" data-st="2"></div><div class="st" data-st="3"></div><div class="st" data-st="4"></div></div>
+
+  <!-- 1 user type -->
+  <section class="section" style="padding-block:0 var(--s6)">
+    <h3 style="margin-bottom:var(--s4)">1. I am a…</h3>
+    <p class="muted" style="margin:-8px 0 var(--s4)">This helps you describe your context; account access is determined by your signed-in organization.</p>
+    <div class="grid c3" id="userTypes">
+      {% for k, t, d in [('student','Student / Member','Raise and track complaints.'),('employee','Employee / Resident','Report workplace or facility issues.'),('visitor','Citizen / Visitor','Report public-facing issues.')] %}
+      <button class="choice" aria-pressed="false" data-val="{{ k }}"><h3>{{ t }}</h3><p>{{ d }}</p></button>
+      {% endfor %}
+    </div>
+  </section>
+
+  <!-- 2 sector -->
+  <section style="padding-bottom:var(--s6)">
+    <h3 style="margin-bottom:var(--s4)">2. Choose a sector</h3>
+    <div class="grid c3" id="sectors">
+      {% for k, n, d in [('education','Education','Universities and schools'),('corporate','Corporate','Workplaces and offices'),('government','Government','Public services'),('healthcare','Healthcare','Hospitals and clinics'),('transport','Transport','Transit and mobility'),('housing','Housing','Residential societies')] %}
+      <button class="choice" aria-pressed="false" data-val="{{ k }}">
+        <div class="icon-tile" style="margin-bottom:12px">{{ icon(k) }}</div><h3>{{ n }}</h3><p>{{ d }}</p>
+      </button>
+      {% endfor %}
+    </div>
+  </section>
+
+  <!-- 3 organization -->
+  <section style="padding-bottom:var(--s6)">
+    <h3 style="margin-bottom:var(--s4)">3. Find your organization</h3>
+    <div class="search"><span class="sr-only">Search organizations</span>{{ icon('search') }}<input class="input" id="orgSearch" placeholder="Search e.g. REVA University" autocomplete="off" aria-label="Search organizations"></div>
+    <div id="orgList" class="grid c2" style="margin-top:var(--s4)" aria-live="polite"></div>
+  </section>
+
+  <!-- 4 location -->
+  <section style="padding-bottom:var(--s6)">
+    <h3 style="margin-bottom:var(--s4)">4. Select a location</h3>
+    <div class="field" style="max-width:420px">
+      <label for="locSelect" class="sr-only">Location</label>
+      <select class="select" id="locSelect" disabled><option value="">Choose an organization first</option></select>
+    </div>
+  </section>
+
+  <div class="row between" style="padding-bottom:var(--s8)">
+    <a href="/" class="btn btn-ghost">← Back</a>
+    <button class="btn btn-primary btn-lg" id="continueBtn" disabled>Continue to dashboard</button>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(() => {
+  const { API, $, $$, esc, debounce, Org, emptyState, skeleton } = HX;
+  const state = { userType: null, sector: new URLSearchParams(location.search).get("sector"), org: null, location: "" };
+  let orgRequest = 0;
+
+  function pick(group, btn) {
+    $$(".choice", group).forEach((b) => b.setAttribute("aria-pressed", b === btn));
+  }
+  function progress() {
+    const done = [state.userType, state.sector, state.org, state.location];
+    $$(".st").forEach((s, i) => s.classList.toggle("done", !!done[i]));
+    $("#continueBtn").disabled = !done.every(Boolean);
+  }
+
+  $("#userTypes").addEventListener("click", (e) => {
+    const b = e.target.closest(".choice"); if (!b) return;
+    state.userType = b.dataset.val; pick($("#userTypes"), b); progress();
+  });
+  $("#sectors").addEventListener("click", (e) => {
+    const b = e.target.closest(".choice"); if (!b) return;
+    state.sector = b.dataset.val; state.org = null; state.location = ""; pick($("#sectors"), b);
+    resetLocation(); loadOrgs(); progress();
+  });
+  if (state.sector) { const b = $(`#sectors [data-val="${state.sector}"]`); if (b) pick($("#sectors"), b); }
+
+  async function loadOrgs() {
+    const requestId = ++orgRequest;
+    const list = $("#orgList");
+    list.innerHTML = skeleton(2);
+    try {
+      // Expected: { items: [{ id, name, sector, city, locations: [..] }] }
+      const d = await API.get("/api/organizations" + API.qs({ sector: state.sector, q: $("#orgSearch").value.trim() }));
+      if (requestId !== orgRequest) return;
+      const items = d.items || [];
+      if (state.org && !items.some((item) => String(item.id) === String(state.org.id))) {
+        state.org = null;
+        state.location = "";
+        resetLocation();
+        progress();
+      }
+      if (!items.length) { list.innerHTML = `<div style="grid-column:1/-1">${emptyState("No organizations found", "Try a different search or sector.")}</div>`; return; }
+      list.innerHTML = items.map((o) => `
+        <button class="choice" aria-pressed="${state.org && state.org.id === o.id}" data-id="${o.id}">
+          <h3>${esc(o.name)}</h3><p>${esc(o.city || "")}${o.sector ? " · " + esc(o.sector) : ""}</p>
+        </button>`).join("");
+      list.onclick = (e) => {
+        const b = e.target.closest(".choice"); if (!b) return;
+        state.org = items.find((x) => String(x.id) === b.dataset.id);
+        state.location = "";
+        pick(list, b); fillLocations(state.org); progress();
+      };
+    } catch (err) {
+      if (requestId === orgRequest) list.innerHTML = HX.errorState(err);
+    }
+  }
+
+  function resetLocation() { const s = $("#locSelect"); s.disabled = true; s.innerHTML = "<option value=''>Choose an organization first</option>"; }
+  function fillLocations(org) {
+    const s = $("#locSelect");
+    state.location = "";
+    const locs = org.locations && org.locations.length ? org.locations : [org.city || "Main campus"];
+    s.disabled = false;
+    s.innerHTML = `<option value="">Select a location</option>` + locs.map((l) => `<option>${esc(l)}</option>`).join("");
+    if (locs.length === 1) { s.value = locs[0]; state.location = locs[0]; }
+  }
+  $("#locSelect").addEventListener("change", (e) => { state.location = e.target.value; progress(); });
+  $("#orgSearch").addEventListener("input", debounce(loadOrgs, 250));
+
+  $("#continueBtn").addEventListener("click", (e) => {
+    const button = e.currentTarget;
+    if (button.disabled) return;
+    button.disabled = true;
+    button.classList.add("is-loading");
+    button.setAttribute("aria-busy", "true");
+    Org.set({ id: state.org.id, name: state.org.name, location: state.location, userType: state.userType });
+    // Server remains the source of truth for access control.
+    location.href = "/dashboard?org=" + encodeURIComponent(state.org.id);
+  });
+
+  loadOrgs();
+})();
+</script>
+{% endblock %}

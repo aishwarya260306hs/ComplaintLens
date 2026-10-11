@@ -1,0 +1,202 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block page_id %}dashboard{% endblock %}
+
+{% block content %}
+<div class="container dashboard-shell">
+  <div class="page-head">
+    <p class="eyebrow" id="orgName">ComplaintLens</p>
+    <h1 class="dashboard-heading">Your complaints</h1>
+    <p class="muted">Report an issue and follow its progress here.</p>
+  </div>
+
+  <section class="card dashboard-form-card" aria-labelledby="newComplaintHeading">
+    <h2 id="newComplaintHeading" class="simple-heading">Submit a complaint</h2>
+    <form id="complaintForm" novalidate>
+      <div class="complaint-form-row organization-selection-row">
+        <div class="field">
+          <label for="userType">I am a</label>
+          <select class="select" id="userType" name="user_type" required>
+            <option value="">Choose user type</option><option value="student">Student</option><option value="employee">Employee</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="sector">Sector</label>
+          <select class="select" id="sector" name="sector" required>
+            <option value="">Choose a sector</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="organizationSearch">Find an organization</label>
+          <input class="input" id="organizationSearch" type="search" placeholder="Search by name or city" autocomplete="off">
+        </div>
+        <div class="field">
+          <label for="organization_id">Organization</label>
+          <select class="select" id="organization_id" name="organization_id" required disabled>
+            <option value="">Choose a sector first</option>
+          </select>
+        </div>
+      </div>
+      <p class="field-hint" id="organizationMeta" aria-live="polite"></p>
+      <p class="field-hint" id="directoryInfo" role="status" aria-live="polite"></p>
+      <div class="complaint-form-row">
+        <div class="field">
+          <label for="location">Location</label>
+          <input class="input" id="location" name="location" maxlength="120" required placeholder="Building, floor, or area">
+        </div>
+        <div class="field">
+          <label for="title">Complaint title</label>
+          <input class="input" id="title" name="title" maxlength="120" minlength="8" required placeholder="Briefly describe the issue">
+        </div>
+      </div>
+      <div class="field">
+        <label for="category">Category</label>
+        <select class="select" id="category" name="category" required disabled>
+          <option value="">Loading categories…</option>
+        </select>
+        <p class="form-feedback" id="categoryFeedback" role="status" aria-live="polite"></p>
+      </div>
+      <div class="field">
+        <label for="description">Detailed description</label>
+        <textarea class="textarea" id="description" name="description" minlength="30" maxlength="2000" required placeholder="What happened, when did it start, and who is affected?"></textarea>
+        <p class="field-hint">Please include at least 30 characters so the team can understand the issue.</p>
+      </div>
+      <div class="row between dashboard-submit-row">
+        <a href="/complaints/new" class="muted">Need to attach a photo? Use the full complaint form.</a>
+        <button class="btn btn-primary" id="submitComplaint" type="submit" disabled>Submit complaint</button>
+      </div>
+      <p class="form-feedback" id="submitFeedback" role="status" aria-live="polite"></p>
+    </form>
+  </section>
+
+  <section class="dashboard-list-section" aria-labelledby="myComplaintsHeading">
+    <div class="row between dashboard-list-heading">
+      <div>
+        <h2 id="myComplaintsHeading" class="simple-heading">My Complaints</h2>
+        <p class="muted">Select a complaint to see its full details and updates.</p>
+      </div>
+      <div class="complaint-list-filters" role="search">
+        <label class="sr-only" for="complaintSearch">Search my complaints</label>
+        <input class="input" id="complaintSearch" type="search" placeholder="Search complaints">
+        <label class="sr-only" for="complaintStatus">Filter by status</label>
+        <select class="select" id="complaintStatus">
+          <option value="">All statuses</option>
+          <option>Submitted</option>
+          <option>Under AI Analysis</option>
+          <option>Awaiting Staff Review</option>
+          <option>In Progress</option>
+          <option>Resolved</option>
+        </select>
+      </div>
+    </div>
+    <div id="complaintList" aria-live="polite"></div>
+  </section>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(() => {
+  const { API, $, esc, fmtDate, badge, debounce, skeleton, emptyState, errorState, toast, initOrganizationPicker } = HX;
+  const form = $("#complaintForm");
+  const submit = $("#submitComplaint");
+  initOrganizationPicker();
+
+  async function loadCategories() {
+    const select = $("#category");
+    try {
+      const data = await API.get("/api/categories");
+      if (!Array.isArray(data.items) || !data.items.length) throw new Error("No complaint categories are available.");
+      select.innerHTML = '<option value="">Choose a category</option>' +
+        data.items.map((item) => `<option value="${esc(item.name || item)}">${esc(item.name || item)}</option>`).join("");
+      select.disabled = false;
+      $("#categoryFeedback").textContent = "";
+      submit.disabled = false;
+    } catch (error) {
+      select.innerHTML = '<option value="">Categories unavailable</option>';
+      $("#categoryFeedback").textContent = error.message || "Categories could not be loaded.";
+    }
+  }
+
+  function renderComplaints(items) {
+    if (!items.length) {
+      const filtered = $("#complaintSearch").value.trim() || $("#complaintStatus").value;
+      $("#complaintList").innerHTML = filtered
+        ? emptyState("No matching complaints", "Try another search or status filter. Your reports have not been changed.")
+        : emptyState("No complaints yet", "Submit the form above to create your first complaint.");
+      return;
+    }
+    $("#complaintList").innerHTML = `<div class="table-wrap"><table class="t complaints-table">
+      <thead><tr><th>Complaint</th><th>Organization and location</th><th>Date</th><th>Status</th></tr></thead>
+      <tbody>${items.map((complaint) => `<tr>
+        <td><a class="li-title" href="/complaints/${encodeURIComponent(complaint.id)}">${esc(complaint.title)}</a></td>
+        <td>${esc(complaint.organization || "")}${complaint.location ? ` · ${esc(complaint.location)}` : ""}</td>
+        <td>${fmtDate(complaint.created_at)}</td>
+        <td>${badge(complaint.status)}</td>
+      </tr>`).join("")}</tbody>
+    </table></div>`;
+  }
+
+  async function loadComplaints() {
+    $("#complaintList").innerHTML = skeleton(3);
+    try {
+      const data = await API.get("/api/complaints" + API.qs({
+        mine: 1,
+        q: $("#complaintSearch").value.trim(),
+        status: $("#complaintStatus").value,
+      }));
+      renderComplaints(data.items || []);
+    } catch (error) {
+      $("#complaintList").innerHTML = errorState(error);
+    }
+  }
+
+  async function initialize() {
+    $("#complaintList").innerHTML = skeleton(3);
+    await Promise.all([loadCategories(), loadComplaints()]);
+  }
+
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (!form.reportValidity() || submit.disabled) return;
+    if ($("#title").value.trim().length < 8) {
+      $("#title").setCustomValidity("Enter a title with at least 8 characters.");
+      $("#title").reportValidity();
+      $("#title").setCustomValidity("");
+      return;
+    }
+    if ($("#description").value.trim().length < 30) {
+      $("#description").setCustomValidity("Enter a description with at least 30 characters.");
+      $("#description").reportValidity();
+      $("#description").setCustomValidity("");
+      return;
+    }
+    submit.disabled = true;
+    submit.classList.add("is-loading");
+    submit.setAttribute("aria-busy", "true");
+    $("#submitFeedback").textContent = "Submitting your complaint…";
+    const body = new FormData(form);
+    body.set("severity", "medium");
+    try {
+      const response = await API.post("/api/complaints", body);
+      toast(response.analysis_pending ? "Complaint submitted. AI analysis is pending." : "Complaint submitted.");
+      location.href = `/complaints/${encodeURIComponent(response.id)}/analysis`;
+    } catch (error) {
+      $("#submitFeedback").textContent = error.message || "Your complaint could not be submitted. Please try again.";
+      submit.disabled = false;
+      toast(error.message || "Your complaint could not be submitted.", "error");
+    } finally {
+      submit.classList.remove("is-loading");
+      submit.removeAttribute("aria-busy");
+    }
+  });
+
+  $("#title").addEventListener("input", (event) => event.target.setCustomValidity(""));
+  $("#description").addEventListener("input", (event) => event.target.setCustomValidity(""));
+  $("#complaintSearch").addEventListener("input", debounce(loadComplaints, 250));
+  $("#complaintStatus").addEventListener("change", loadComplaints);
+
+  initialize();
+})();
+</script>
+{% endblock %}

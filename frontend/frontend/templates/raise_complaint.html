@@ -1,0 +1,142 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Raise a Complaint{% endblock %}
+{% block page_id %}raise{% endblock %}
+
+{% block content %}
+<div class="container">
+  <form class="card form-card" id="complaintForm" novalidate>
+    <p class="eyebrow">New complaint</p>
+    <h2 style="font-size:2.2rem;margin-bottom:6px">Tell us what happened</h2>
+    <p class="muted" style="margin-bottom:var(--s5)">Submitting to <strong id="orgLabel">your organization</strong>. Takes about two minutes.</p>
+
+    <div class="field">
+      <label for="category">Category</label>
+      <select class="select" id="category" name="category" required><option value="">Select a category</option></select>
+      <span class="err">Please choose a category.</span>
+    </div>
+
+    <div class="field">
+      <label for="title">Issue title</label>
+      <input class="input" id="title" name="title" maxlength="120" placeholder="e.g. Water leakage in Block B corridor" required>
+      <div class="hint"><span>Keep it short and specific.</span><span><span id="titleCount">0</span>/120</span></div>
+      <span class="err">Title must be at least 8 characters.</span>
+    </div>
+
+    <div class="field">
+      <label for="description">Detailed description</label>
+      <textarea class="textarea" id="description" name="description" maxlength="2000" placeholder="What happened? When did it start? Who is affected?" required></textarea>
+      <div class="hint"><span>More detail helps AI find genuinely similar issues.</span><span><span id="descCount">0</span>/2000</span></div>
+      <span class="err">Please describe the issue in at least 30 characters.</span>
+    </div>
+
+    <div class="field">
+      <label for="location">Location</label>
+      <input class="input" id="location" name="location" maxlength="120" placeholder="e.g. Block B, 2nd floor" required>
+      <span class="err">Please enter where the issue is.</span>
+    </div>
+
+    <div class="field">
+      <span class="label" id="sevLabel">Severity</span>
+      <div class="seg sev" role="radiogroup" aria-labelledby="sevLabel">
+        <input type="radio" name="severity" id="sevLow" value="low"><label for="sevLow">Low</label>
+        <input type="radio" name="severity" id="sevMed" value="medium" checked><label for="sevMed">Medium</label>
+        <input type="radio" name="severity" id="sevHigh" value="high"><label for="sevHigh">High</label>
+      </div>
+    </div>
+
+    <div class="field">
+      <span class="label">Photo <span class="muted" style="font-weight:500">(optional)</span></span>
+      <div class="dropzone" id="dz" tabindex="0" role="button" aria-label="Upload an image">
+        <input type="file" id="image" name="image" accept="image/png,image/jpeg,image/webp" hidden>
+        <div id="dzText"><strong>Drag &amp; drop</strong> an image or click to browse<br><span class="muted" style="font-size:.82rem">PNG, JPG or WebP · up to 5 MB</span></div>
+        <img id="preview" alt="Selected image preview" hidden>
+      </div>
+      <span class="err" id="imgErr"></span>
+    </div>
+
+    <button class="btn btn-primary btn-lg" type="submit" id="submitBtn" style="width:100%">Submit Complaint</button>
+    <div class="meter" id="subMeter" style="margin-top:14px" hidden><i></i></div>
+  </form>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(() => {
+  const { API, $, esc, toast, setFieldError, Org } = HX;
+  const form = $("#complaintForm");
+  const org = Org.get();
+  if (org) $("#orgLabel").textContent = org.name + (org.location ? " · " + org.location : "");
+  if (org && org.location) $("#location").placeholder = "e.g. " + org.location + ", Block B";
+
+  // Categories from backend (falls back to sensible defaults)
+  (async () => {
+    let cats = ["Infrastructure", "Academics", "Hostel & Housing", "Canteen & Food", "Transport", "IT & Network", "Safety & Security", "Administration", "Other"];
+    try { const d = await API.get("/api/categories" + API.qs({ org: org && org.id })); if (d.items && d.items.length) cats = d.items.map((c) => c.name || c); } catch (_) {}
+    $("#category").insertAdjacentHTML("beforeend", cats.map((c) => `<option>${esc(c)}</option>`).join(""));
+  })();
+
+  const counter = (input, out) => $(input).addEventListener("input", (e) => ($(out).textContent = e.target.value.length));
+  counter("#title", "#titleCount"); counter("#description", "#descCount");
+
+  // Drag & drop
+  const dz = $("#dz"), file = $("#image");
+  const MAX = 5 * 1024 * 1024;
+  function setFile(f) {
+    $("#imgErr").textContent = ""; $("#imgErr").style.display = "none";
+    if (!f) return;
+    if (!/^image\/(png|jpe?g|webp)$/.test(f.type) || f.size > MAX) {
+      $("#imgErr").textContent = "Use a PNG, JPG or WebP under 5 MB."; $("#imgErr").style.cssText = "display:block;color:var(--red);font-size:.82rem;font-weight:600";
+      file.value = ""; return;
+    }
+    const dt = new DataTransfer(); dt.items.add(f); file.files = dt.files;
+    $("#preview").src = URL.createObjectURL(f); $("#preview").hidden = false;
+    $("#dzText").innerHTML = `<strong>${esc(f.name)}</strong><br><span class="muted" style="font-size:.82rem">Click to replace</span>`;
+  }
+  dz.addEventListener("click", () => file.click());
+  dz.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); file.click(); } });
+  file.addEventListener("change", () => setFile(file.files[0]));
+  ["dragenter", "dragover"].forEach((ev) => dz.addEventListener(ev, (e) => { e.preventDefault(); dz.classList.add("drag"); }));
+  ["dragleave", "drop"].forEach((ev) => dz.addEventListener(ev, (e) => { e.preventDefault(); dz.classList.remove("drag"); }));
+  dz.addEventListener("drop", (e) => setFile(e.dataTransfer.files[0]));
+
+  function validate() {
+    const f = (id) => $("#" + id).closest(".field");
+    const checks = [
+      ["category", !$("#category").value],
+      ["title", $("#title").value.trim().length < 8],
+      ["description", $("#description").value.trim().length < 30],
+      ["location", !$("#location").value.trim()],
+    ];
+    let ok = true, first = null;
+    checks.forEach(([id, bad]) => { f(id).classList.toggle("invalid", bad); if (bad) { ok = false; first = first || $("#" + id); } });
+    if (first) first.focus();
+    return ok;
+  }
+  ["category", "title", "description", "location"].forEach((id) => $("#" + id).addEventListener("blur", validate_one(id)));
+  function validate_one(id) { return () => { const el = $("#" + id); if (el.value) el.closest(".field").classList.remove("invalid"); }; }
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    if (!validate()) return;
+    const btn = $("#submitBtn"), meter = $("#subMeter");
+    btn.classList.add("is-loading"); btn.textContent = "Submitting…"; meter.hidden = false;
+    const bar = meter.firstElementChild; bar.style.width = "30%";
+    const fd = new FormData(form);
+    if (org) fd.append("organization_id", org.id);
+    try {
+      // Expected: 201 { id, ... } — backend runs the fine-tuned model and stores results.
+      const res = await API.post("/api/complaints", fd);
+      bar.style.width = "100%";
+      toast("Complaint submitted");
+      location.href = "/complaints/" + encodeURIComponent(res.id) + "/analysis";
+    } catch (err) {
+      bar.style.width = "0"; meter.hidden = true;
+      btn.classList.remove("is-loading"); btn.textContent = "Submit Complaint";
+      toast(err.message, "error");
+    }
+  });
+})();
+</script>
+{% endblock %}

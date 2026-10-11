@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% block title %}Complaint Group{% endblock %}
+{% block page_id %}group-detail{% endblock %}
+
+{% block content %}
+<div class="container">
+  <div class="page-head">
+    <a href="/staff" class="muted" style="font-weight:600">← Staff dashboard</a>
+    <h1 id="gTitle" style="margin-top:12px">Loading…</h1>
+    <p class="muted" id="gSummary" style="margin-top:10px;max-width:70ch"></p>
+    <div class="row" id="gMeta" style="margin-top:14px"></div>
+  </div>
+
+  <div class="layout-2" style="margin-bottom:var(--s8)">
+    <div style="display:grid;gap:var(--s5)">
+      <section class="card">
+        <h3 style="margin-bottom:var(--s3)">Confirmed complaints <span class="badge" id="confCount">0</span></h3>
+        <p class="li-meta" style="margin-bottom:var(--s3)">Every individual complaint is preserved.</p>
+        <div id="confirmed"></div>
+      </section>
+      <section class="card">
+        <h3 style="margin-bottom:6px">Proposed matches</h3>
+        <div class="notice warn" style="margin:var(--s3) 0">AI suggestions only. Scores are not probabilities and nothing is grouped until you confirm.</div>
+        <div id="proposed"></div>
+      </section>
+      <section class="card"><h3 style="margin-bottom:var(--s3)">Review history</h3><ol class="tl" id="history"></ol></section>
+    </div>
+
+    <aside style="display:grid;gap:var(--s5);position:sticky;top:96px">
+      <section class="card">
+        <h3 style="margin-bottom:var(--s4)">Staff actions</h3>
+        <div class="field"><label for="sStatus">Status</label>
+          <select class="select" id="sStatus"><option>Awaiting Staff Review</option><option>In Progress</option><option>Resolved</option></select></div>
+        <div class="field"><label for="sPriority">Priority</label>
+          <select class="select" id="sPriority"><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option></select></div>
+        <div class="field"><label for="sNote">Internal note</label><textarea class="textarea" id="sNote" style="min-height:90px" placeholder="Visible to staff only"></textarea></div>
+        <div class="field"><label for="sPublic">Update for complainants <span class="muted" style="font-weight:500">(optional)</span></label><textarea class="textarea" id="sPublic" style="min-height:80px" placeholder="Shown on complaint timeline"></textarea></div>
+        <button class="btn btn-primary" id="saveBtn" style="width:100%">Save changes</button>
+      </section>
+      <section class="card"><h3 style="margin-bottom:var(--s3)">Internal notes</h3><div id="notes"></div></section>
+    </aside>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(async () => {
+  const { API, $, esc, fmtDate, fmtDateTime, priorityBadge, badge, toast, emptyState, errorState } = HX;
+  const gid = location.pathname.split("/").filter(Boolean)[2];
+  const base = "/api/groups/" + encodeURIComponent(gid);
+
+  async function load() {
+    try {
+      /* Expected /api/groups/<id>:
+         { id,title,summary,organization,location,priority,status,
+           confirmed:[{id,title,created_at,reporter?}],
+           proposed:[{suggestion_id,complaint_id,title,score}],
+           history:[{action,by,at,detail}], notes:[{author,text,at}] } */
+      const g = await API.get(base);
+      document.title = g.title + " · HACKNETIX";
+      $("#gTitle").textContent = g.title; $("#gSummary").textContent = g.summary || "";
+      $("#gMeta").innerHTML = `${priorityBadge(g.priority)}${badge(g.status)}<span class="li-meta">${esc(g.organization || "")}${g.location ? " · " + esc(g.location) : ""}</span>`;
+      $("#sStatus").value = g.status; $("#sPriority").value = g.priority;
+      $("#confCount").textContent = (g.confirmed || []).length;
+
+      $("#confirmed").innerHTML = (g.confirmed || []).map((c) => `<div class="list-item"><div><div class="li-title">${esc(c.title)}</div><div class="li-meta">#${esc(c.id)} · ${fmtDate(c.created_at)}</div></div></div>`).join("") || emptyState("No confirmed complaints", "");
+      $("#proposed").innerHTML = (g.proposed || []).map((p) => `
+        <div class="list-item" data-s="${esc(p.suggestion_id)}" style="display:block">
+          <div class="row between"><span class="li-title">${esc(p.title)} <span class="li-meta">#${esc(p.complaint_id)}</span></span><span class="badge">Similarity ${Math.round(p.score * 100)}%</span></div>
+          <div class="meter" style="margin:10px 0"><i style="width:${Math.round(p.score * 100)}%"></i></div>
+          <div class="row"><button class="btn btn-success btn-sm" data-act="confirm">Confirm</button><button class="btn btn-secondary btn-sm" data-act="reject">Reject</button></div>
+        </div>`).join("") || '<p class="muted">No pending suggestions.</p>';
+      $("#history").innerHTML = (g.history || []).map((h) => `<li class="done"><div class="li-title">${esc(h.action)}</div><div class="when">${esc(h.by || "System")} · ${fmtDateTime(h.at)}${h.detail ? " · " + esc(h.detail) : ""}</div></li>`).join("") || '<p class="muted">No activity yet.</p>';
+      $("#notes").innerHTML = (g.notes || []).map((n) => `<div class="list-item" style="display:block"><div class="li-meta">${esc(n.author)} · ${fmtDateTime(n.at)}</div><p style="margin-top:4px;font-size:.92rem">${esc(n.text)}</p></div>`).join("") || '<p class="muted">No notes.</p>';
+    } catch (e) { $("#gTitle").textContent = "Group unavailable"; $("#confirmed").innerHTML = errorState(e); }
+  }
+
+  $("#proposed").addEventListener("click", async (e) => {
+    const b = e.target.closest("[data-act]"); if (!b) return;
+    const id = b.closest("[data-s]").dataset.s;
+    b.classList.add("is-loading");
+    try { await API.post(`/api/staff/suggestions/${encodeURIComponent(id)}/${b.dataset.act}`, {}); toast(b.dataset.act === "confirm" ? "Grouping confirmed" : "Suggestion rejected"); load(); }
+    catch (err) { b.classList.remove("is-loading"); toast(err.message, "error"); }
+  });
+
+  $("#saveBtn").addEventListener("click", async (e) => {
+    const b = e.currentTarget; b.classList.add("is-loading");
+    try {
+      await API.patch(base, { status: $("#sStatus").value, priority: $("#sPriority").value, internal_note: $("#sNote").value.trim() || undefined, public_update: $("#sPublic").value.trim() || undefined });
+      toast("Changes saved"); $("#sNote").value = ""; $("#sPublic").value = ""; load();
+    } catch (err) { toast(err.message, "error"); }
+    b.classList.remove("is-loading");
+  });
+  load();
+})();
+</script>
+{% endblock %}

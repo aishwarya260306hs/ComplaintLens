@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}Sign In{% endblock %}
+{% block page_id %}login{% endblock %}
+
+{% block content %}
+<div class="container sign-in-shell">
+  <form class="card form-card sign-in-card" method="post" action="/login" data-submit-once>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="next" value="{{ next }}">
+    <a href="/" class="sign-in-brand" aria-label="ComplaintLens home">ComplaintLens</a>
+    <h1 class="sign-in-heading">Sign in</h1>
+    <p class="muted sign-in-intro">Use your account email address to continue.</p>
+    {% if error %}<div class="notice warn sign-in-error" role="alert">{{ error }}</div>{% endif %}
+    <div class="field">
+      <label for="email">Email address</label>
+      <input class="input" id="email" name="email" type="email" autocomplete="username" required autofocus aria-describedby="emailHelp">
+      <span class="field-hint" id="emailHelp">Enter the email address linked to your account.</span>
+    </div>
+    <div class="field">
+      <label for="password">Password</label>
+      <div class="password-field">
+        <input class="input" id="password" name="password" type="password" autocomplete="current-password" required>
+        <button class="password-toggle" type="button" id="togglePassword" aria-label="Show password" aria-pressed="false">Show</button>
+      </div>
+    </div>
+    <button class="btn btn-primary btn-lg" type="submit">Sign In</button>
+    <p class="muted sign-in-register">New here? <a href="/register{{ '?next=' ~ (next|urlencode) if next }}">Create an account</a></p>
+  </form>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(() => {
+  const password = document.querySelector("#password");
+  const button = document.querySelector("#togglePassword");
+  button.addEventListener("click", () => {
+    const visible = password.type === "password";
+    password.type = visible ? "text" : "password";
+    button.textContent = visible ? "Hide" : "Show";
+    button.setAttribute("aria-label", visible ? "Hide password" : "Show password");
+    button.setAttribute("aria-pressed", String(visible));
+  });
+})();
+</script>
+{% endblock %}

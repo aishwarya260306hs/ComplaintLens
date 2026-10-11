@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block page_id %}error{% endblock %}
+
+{% block content %}
+<div class="container" style="max-width:640px;text-align:center;padding-block:var(--s8)">
+  <p class="eyebrow">Error {{ code }}</p>
+  <h1 style="font-size:clamp(2.2rem,6vw,3.6rem)">{{ title }}</h1>
+  <p class="muted" style="margin:16px 0 28px">{{ message }}</p>
+  <a class="btn btn-primary" href="/">Back to home</a>
+</div>
+{% endblock %}

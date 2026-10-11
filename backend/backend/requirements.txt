@@ -1,0 +1,11 @@
+Flask>=3.0
+Flask-SQLAlchemy>=3.1
+Flask-Login>=0.6.3
+numpy>=1.26
+python-dotenv>=1.0
+# Local embedding model runtime (loads the supplied fine-tuned model, never downloads)
+sentence-transformers>=2.7
+# Production server (optional)
+waitress>=3.0
+# Test workflow
+pytest>=8.0

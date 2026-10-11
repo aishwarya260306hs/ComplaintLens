@@ -1,0 +1,305 @@
+{% extends "base.html" %}
+{% block title %}Receiver Dashboard{% endblock %}
+{% block page_id %}staff{% endblock %}
+
+{% block content %}
+<div class="container receiver-shell">
+  <div class="page-head">
+    <p class="eyebrow" id="orgName">Complaint receiver</p>
+    <h1 class="dashboard-heading">Complaints</h1>
+    <p class="muted">Review reports, follow verified groups, and update their status.</p>
+  </div>
+
+  <section class="receiver-stats" id="summary" aria-label="Complaint summary" aria-live="polite">
+    <div class="card stat-card"><span class="stat-label">Total complaints</span><strong class="stat-value">—</strong></div>
+    <div class="card stat-card"><span class="stat-label">Open complaints</span><strong class="stat-value">—</strong></div>
+    <div class="card stat-card"><span class="stat-label">Resolved complaints</span><strong class="stat-value">—</strong></div>
+    <div class="card stat-card"><span class="stat-label">Similar groups</span><strong class="stat-value">—</strong></div>
+  </section>
+  <p class="form-feedback" id="summaryFeedback" role="status" aria-live="polite"></p>
+  <p class="field-hint" id="evaluationNote">AI evaluation: Evaluation data unavailable.</p>
+
+  <section aria-labelledby="receiverListHeading">
+    <div class="row between receiver-list-heading">
+      <div>
+        <h2 class="simple-heading" id="receiverListHeading">Complaint groups</h2>
+        <p class="muted">Only complaints already assigned to a group are shown together. Expand a row to review each report.</p>
+      </div>
+      <div class="complaint-list-filters" role="search">
+        <label class="sr-only" for="groupSearch">Search complaints or groups</label>
+        <input class="input" id="groupSearch" type="search" placeholder="Search complaints or groups">
+        <label class="sr-only" for="filterSector">Filter by sector</label>
+        <select class="select" id="filterSector">
+          <option value="">All sectors</option>
+          <option value="education">Education</option>
+          <option value="healthcare">Medical / Healthcare</option>
+          <option value="government">Government / Public Services</option>
+        </select>
+        {% if current_user.role == "admin" %}
+        <label class="sr-only" for="filterOrganization">Filter by organization</label>
+        <select class="select" id="filterOrganization"><option value="">All organizations</option></select>
+        {% endif %}
+        <label class="sr-only" for="groupLocation">Filter by location</label>
+        <input class="input" id="groupLocation" type="search" placeholder="Filter by location">
+        <label class="sr-only" for="groupStatus">Filter by status</label>
+        <select class="select" id="groupStatus">
+          <option value="">All statuses</option>
+          <option>Submitted</option>
+          <option>Under AI Analysis</option>
+          <option>Awaiting Staff Review</option>
+          <option>In Progress</option>
+          <option>Resolved</option>
+        </select>
+      </div>
+    </div>
+    <div id="groupsTable" aria-live="polite"></div>
+  </section>
+
+  <details class="card suggestion-section" id="suggestionSection">
+    <summary class="suggestion-summary">
+      <span><strong>AI suggestions to review</strong><span class="muted"> · proposed matches, not confirmed groups</span></span>
+      <span class="badge" id="suggestionCount" aria-label="Pending suggestions">—</span>
+    </summary>
+    <p class="muted" style="margin:12px 0">Similarity scores are not probabilities. Review both complaints before confirming a grouping.</p>
+    <div id="suggestions" aria-live="polite"></div>
+  </details>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(() => {
+  const { API, $, esc, fmtDate, fmtDateTime, badge, debounce, skeleton, emptyState, errorState, toast } = HX;
+  const STAFF_STATUSES = ["Awaiting Staff Review", "In Progress", "Resolved"];
+  const isAdmin = document.body.dataset.role === "admin";
+
+  function filters() {
+    return {
+      sector: $("#filterSector").value,
+      org: isAdmin ? $("#filterOrganization").value : "",
+      location: $("#groupLocation").value.trim(),
+      status: $("#groupStatus").value,
+    };
+  }
+
+  async function loadAdminOrganizations() {
+    if (!isAdmin) return;
+    const select = $("#filterOrganization");
+    const selected = select.value;
+    try {
+      const data = await API.get("/api/organizations" + API.qs({ sector: $("#filterSector").value }));
+      select.innerHTML = '<option value="">All organizations</option>' +
+        (data.items || []).map((org) => `<option value="${esc(org.id)}">${esc(org.name)} — ${esc(org.city)}</option>`).join("");
+      if ([...select.options].some((option) => option.value === selected)) select.value = selected;
+    } catch (error) {
+      select.innerHTML = '<option value="">Organization filter unavailable</option>';
+      $("#summaryFeedback").textContent = error.message || "Organizations could not be loaded.";
+    }
+  }
+
+  async function loadSummary() {
+    try {
+      const data = await API.get("/api/staff/summary" + API.qs(filters()));
+      $("#orgName").textContent = data.organization || "Complaint receiver";
+      const values = [data.total_complaints, data.open_complaints, data.resolved_complaints, data.similar_groups];
+      $("#summary").querySelectorAll(".stat-value").forEach((element, index) => {
+        element.textContent = Number.isFinite(Number(values[index])) ? Number(values[index]).toLocaleString() : "—";
+      });
+      $("#suggestionCount").textContent = Number(data.pending_suggestions || 0).toLocaleString();
+      $("#evaluationNote").textContent = data.evaluation?.available
+        ? "AI evaluation metrics are based on the displayed held-out dataset."
+        : `AI evaluation: ${data.evaluation?.message || "Evaluation data unavailable."}`;
+      $("#summaryFeedback").textContent = "";
+    } catch (error) {
+      $("#summary").querySelectorAll(".stat-value").forEach((element) => { element.textContent = "—"; });
+      $("#summaryFeedback").textContent = error.message || "Complaint totals are unavailable.";
+    }
+  }
+
+  function groupRow(group) {
+    const count = Number(group.count) || 0;
+    const options = (group.status && !STAFF_STATUSES.includes(group.status)
+      ? [`<option value="" selected>Keep current: ${esc(group.status)}</option>`]
+      : ['<option value="" selected>Choose status</option>'])
+      .concat(STAFF_STATUSES.map((status) => `<option value="${esc(status)}">${esc(status)}</option>`)).join("");
+    return `<tr>
+      <td>
+        <details class="receiver-group" data-group-id="${esc(group.id)}">
+          <summary>
+            <span class="li-title">${esc(group.title)}</span>
+            <span class="li-meta">${count} ${count === 1 ? "complaint" : "complaints"}</span>
+            ${count > 1 ? '<span class="badge similar-group-badge">Confirmed group</span>' : ""}
+          </summary>
+          <div class="group-members" aria-live="polite"></div>
+        </details>
+      </td>
+      <td>${esc(group.location || "—")}</td>
+      <td>${badge(group.status)}</td>
+      <td>${fmtDate(group.updated_at)}</td>
+      <td>
+        <div class="status-update">
+          <label class="sr-only" for="status-${esc(group.id)}">Update status for ${esc(group.title)}</label>
+          <select class="select" id="status-${esc(group.id)}" data-status-select>${options}</select>
+          <button class="btn btn-primary btn-sm" type="button" data-save-status disabled>Update</button>
+          <span class="form-feedback" data-status-feedback role="status" aria-live="polite"></span>
+        </div>
+      </td>
+    </tr>`;
+  }
+
+  function complaintDetails(complaint) {
+    return `<article class="receiver-complaint">
+      <div class="row between">
+        <a class="li-title" href="/complaints/${encodeURIComponent(complaint.id)}">${esc(complaint.title)}</a>
+        ${badge(complaint.status)}
+      </div>
+      <p class="li-meta">#${esc(complaint.id)} · ${fmtDateTime(complaint.created_at)} · ${esc(complaint.organization || "")}${complaint.location ? ` · ${esc(complaint.location)}` : ""}</p>
+      <p class="receiver-description">${esc(complaint.description || "")}</p>
+      ${complaint.image_url ? `<a href="${esc(complaint.image_url)}" target="_blank" rel="noopener">View attachment</a>` : ""}
+    </article>`;
+  }
+
+  async function loadGroupMembers(details) {
+    if (details.dataset.loaded === "true" || details.dataset.loading === "true") return;
+    const container = details.querySelector(".group-members");
+    details.dataset.loading = "true";
+    container.innerHTML = '<p class="muted">Loading complaint details…</p>';
+    try {
+      const group = await API.get(`/api/groups/${encodeURIComponent(details.dataset.groupId)}`);
+      const complaints = await Promise.all((group.confirmed || []).map((item) =>
+        API.get(`/api/complaints/${encodeURIComponent(item.id)}`)));
+      container.innerHTML = complaints.length
+        ? complaints.map(complaintDetails).join("")
+        : '<p class="muted">No complaints are currently assigned to this group.</p>';
+      details.dataset.loaded = "true";
+    } catch (error) {
+      container.innerHTML = `<div class="notice warn" role="alert">${esc(error.message || "Complaint details could not be loaded.")} <button class="btn btn-secondary btn-sm" type="button" data-retry-group>Retry</button></div>`;
+    } finally {
+      details.dataset.loading = "false";
+    }
+  }
+
+  async function loadGroups() {
+    $("#groupsTable").innerHTML = skeleton(3);
+    try {
+      const data = await API.get("/api/staff/groups" + API.qs({
+        q: $("#groupSearch").value.trim(),
+        ...filters(),
+      }));
+      const groups = data.items || [];
+      if (!groups.length) {
+        $("#groupsTable").innerHTML = emptyState("No complaints found", "Try a different search or status filter.");
+        return;
+      }
+      $("#groupsTable").innerHTML = `<div class="table-wrap"><table class="t receiver-table">
+        <thead><tr><th>Complaint or confirmed group</th><th>Location</th><th>Status</th><th>Updated</th><th>Update status</th></tr></thead>
+        <tbody>${groups.map(groupRow).join("")}</tbody>
+      </table></div>`;
+      $("#groupsTable").querySelectorAll(".receiver-group").forEach((details) => {
+        details.addEventListener("toggle", () => {
+          if (details.open) loadGroupMembers(details);
+        });
+      });
+    } catch (error) {
+      $("#groupsTable").innerHTML = errorState(error);
+    }
+  }
+
+  $("#groupsTable").addEventListener("change", (event) => {
+    if (event.target.matches("[data-status-select]")) {
+      event.target.closest(".status-update").querySelector("[data-save-status]").disabled = !event.target.value;
+    }
+  });
+
+  $("#groupsTable").addEventListener("click", async (event) => {
+    const retry = event.target.closest("[data-retry-group]");
+    if (retry) {
+      loadGroupMembers(retry.closest("details"));
+      return;
+    }
+    const button = event.target.closest("[data-save-status]");
+    if (!button || button.disabled) return;
+    const row = button.closest("tr");
+    const select = row.querySelector("[data-status-select]");
+    const feedback = row.querySelector("[data-status-feedback]");
+    button.disabled = true;
+    button.classList.add("is-loading");
+    button.setAttribute("aria-busy", "true");
+    feedback.textContent = "Updating…";
+    try {
+      await API.patch(`/api/groups/${encodeURIComponent(row.querySelector(".receiver-group").dataset.groupId)}`, { status: select.value });
+      toast("Complaint status updated.");
+      await Promise.all([loadGroups(), loadSummary()]);
+    } catch (error) {
+      feedback.textContent = error.message || "Status could not be updated.";
+      button.disabled = false;
+      select.focus();
+    } finally {
+      button.classList.remove("is-loading");
+      button.removeAttribute("aria-busy");
+    }
+  });
+
+  async function loadSuggestions() {
+    $("#suggestions").innerHTML = skeleton(2);
+    try {
+      const data = await API.get("/api/staff/suggestions" + API.qs(filters()));
+      const items = data.items || [];
+      $("#suggestionCount").textContent = items.length.toLocaleString();
+      if (!items.length) {
+        $("#suggestions").innerHTML = '<p class="muted">There are no pending AI suggestions.</p>';
+        return;
+      }
+      $("#suggestions").innerHTML = `<div class="suggestion-list">${items.map((item) => `
+        <article class="receiver-suggestion" data-suggestion-id="${esc(item.id)}">
+          <div>
+            <p><strong>#${esc(item.complaint.id)} ${esc(item.complaint.title)}</strong> (${esc(item.complaint.status)}) may belong with <a class="li-title" href="/staff/groups/${encodeURIComponent(item.group.id)}">${esc(item.group.title)}</a> (${esc(item.group.status)}).</p>
+            <p class="li-meta">${esc(item.location || "")} · Group maximum similarity ${Math.round(Number(item.score) * 100)}%; this is not an accuracy metric.</p>
+            <ul class="li-meta">${(item.complaint_pairs || []).map((pair) =>
+              `<li>Possible pair: #${esc(pair.complaint_id)} ${esc(pair.title)} (${esc(pair.status)}) — similarity ${Math.round(Number(pair.score) * 100)}%</li>`
+            ).join("") || "<li>Pairwise scores unavailable for these stored embeddings.</li>"}</ul>
+          </div>
+          <div class="row">
+            <button class="btn btn-primary btn-sm" type="button" data-suggestion-action="confirm">Confirm</button>
+            <button class="btn btn-secondary btn-sm" type="button" data-suggestion-action="reject">Reject</button>
+          </div>
+        </article>`).join("")}</div>`;
+    } catch (error) {
+      $("#suggestions").innerHTML = errorState(error);
+    }
+  }
+
+  $("#suggestionSection").addEventListener("toggle", (event) => {
+    if (event.currentTarget.open) loadSuggestions();
+  });
+  $("#suggestions").addEventListener("click", async (event) => {
+    const button = event.target.closest("[data-suggestion-action]");
+    if (!button || button.disabled) return;
+    const card = button.closest("[data-suggestion-id]");
+    const action = button.dataset.suggestionAction;
+    card.querySelectorAll("button").forEach((item) => { item.disabled = true; });
+    button.classList.add("is-loading");
+    try {
+      await API.post(`/api/staff/suggestions/${encodeURIComponent(card.dataset.suggestionId)}/${action}`, {});
+      toast(action === "confirm" ? "Suggestion confirmed as a group." : "Suggestion rejected.");
+      await Promise.all([loadSuggestions(), loadGroups(), loadSummary()]);
+    } catch (error) {
+      card.querySelectorAll("button").forEach((item) => { item.disabled = false; });
+      button.classList.remove("is-loading");
+      toast(error.message || "Suggestion could not be reviewed.", "error");
+    }
+  });
+
+  $("#groupSearch").addEventListener("input", debounce(loadGroups, 250));
+  $("#groupLocation").addEventListener("input", debounce(() => { loadSummary(); loadGroups(); loadSuggestions(); }, 250));
+  $("#groupStatus").addEventListener("change", () => { loadSummary(); loadGroups(); loadSuggestions(); });
+  $("#filterSector").addEventListener("change", async () => {
+    if (isAdmin) await loadAdminOrganizations();
+    loadSummary(); loadGroups(); loadSuggestions();
+  });
+  if (isAdmin) $("#filterOrganization").addEventListener("change", () => { loadSummary(); loadGroups(); loadSuggestions(); });
+  loadAdminOrganizations().then(() => { loadSummary(); loadGroups(); });
+  loadSuggestions();
+})();
+</script>
+{% endblock %}

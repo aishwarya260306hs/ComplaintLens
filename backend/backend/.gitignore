@@ -1,0 +1,8 @@
+instance/
+uploads/*
+!uploads/.gitkeep
+__pycache__/
+.pytest_cache/
+.env
+ml_model/*
+!ml_model/README.txt

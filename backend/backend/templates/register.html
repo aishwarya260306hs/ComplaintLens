@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Create Account{% endblock %}
+{% block page_id %}register{% endblock %}
+
+{% block content %}
+<div class="container">
+  <form class="card form-card" method="post" action="/register" style="max-width:520px" data-submit-once>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="next" value="{{ next }}">
+    <p class="eyebrow">Get started</p>
+    <h2 style="font-size:2.2rem;margin-bottom:var(--s5)">Create your account</h2>
+    {% if error %}<div class="notice warn" role="alert" style="margin-bottom:var(--s4)">{{ error }}</div>{% endif %}
+    <div class="field"><label for="name">Full name</label><input class="input" id="name" name="name" value="{{ form.get('name','') }}" autocomplete="name" required></div>
+    <div class="field"><label for="email">Email</label><input class="input" id="email" name="email" type="email" value="{{ form.get('email','') }}" autocomplete="username" required></div>
+    <div class="field"><label for="password">Password</label><input class="input" id="password" name="password" type="password" minlength="8" autocomplete="new-password" required><div class="hint"><span>At least 8 characters.</span></div></div>
+    <div class="field">
+      <label for="organization_id">Your organization</label>
+      <select class="select" id="organization_id" name="organization_id" required>
+        <option value="">Select an organization</option>
+        {% for o in orgs %}<option value="{{ o.id }}" {{ 'selected' if selected == o.id }}>{{ o.name }}{% if o.city %} · {{ o.city }}{% endif %}</option>{% endfor %}
+      </select>
+    </div>
+    <button class="btn btn-primary btn-lg" type="submit" style="width:100%">Create account</button>
+    <p class="muted" style="margin-top:var(--s4);text-align:center">Already registered? <a href="/login{{ '?next=' ~ (next|urlencode) if next }}" style="color:var(--blue);font-weight:700">Sign in</a></p>
+  </form>
+</div>
+{% endblock %}

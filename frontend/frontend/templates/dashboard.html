@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Dashboard{% endblock %}
+{% block page_id %}dashboard{% endblock %}
+
+{% block content %}
+<div class="container">
+  <div class="page-head row between">
+    <div>
+      <p class="eyebrow" id="orgName">Your organization</p>
+      <h1>Welcome back<span id="userName"></span>.</h1>
+    </div>
+    <span class="tag-sample" id="sampleTag" hidden>Demonstration data</span>
+  </div>
+
+  <div class="cta-banner" style="margin-bottom:var(--s5)">
+    <div><h2 style="color:#fff;font-size:1.9rem">Something not right?</h2><p style="color:#c9cfe3;margin-top:6px">Tell us. We will check for similar reports automatically.</p></div>
+    <a href="/complaints/new" class="btn btn-primary btn-lg">Raise a Complaint</a>
+  </div>
+
+  <div class="grid c4" id="kpis" style="margin-bottom:var(--s5)">
+    <div class="skel block"></div><div class="skel block"></div><div class="skel block"></div><div class="skel block"></div>
+  </div>
+
+  <div class="layout-2">
+    <section class="card">
+      <div class="row between" style="margin-bottom:var(--s3)"><h3>Recently submitted</h3><a class="btn btn-ghost btn-sm" href="/my-complaints">View all</a></div>
+      <div id="recent">{{ '' }}</div>
+    </section>
+
+    <div style="display:grid;gap:var(--s5)">
+      <section class="card"><h3 style="margin-bottom:var(--s3)">Announcements</h3><div id="announcements"></div></section>
+      <section class="card"><div class="row between"><h3>Notifications</h3><a class="btn btn-ghost btn-sm" href="/notifications">See all</a></div><div id="notes"></div></section>
+    </div>
+  </div>
+
+  <div class="grid c2" style="margin-top:var(--s5);margin-bottom:var(--s8)">
+    <section class="card"><h3 style="margin-bottom:var(--s3)">Common issues</h3><div id="common"></div></section>
+    <section class="card"><h3 style="margin-bottom:var(--s3)">FAQs</h3><div id="faqs"></div></section>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(async () => {
+  const { API, $, esc, fmtDate, priorityBadge, badge, countUp, skeleton, emptyState, errorState, Org } = HX;
+  const org = new URLSearchParams(location.search).get("org") || (Org.get() || {}).id;
+  $("#recent").innerHTML = skeleton(3);
+  try {
+    /* Expected /api/dashboard response:
+       { organization:{name,location}, user:{name}, is_sample:false,
+         counts:{mine,open,in_progress,resolved},
+         recent:[{id,title,status,priority,created_at}],
+         common_issues:[{title,count}], faqs:[{q,a}], announcements:[{title,body,date}],
+         notifications:[{id,message,created_at,read}] } */
+    const d = await API.get("/api/dashboard" + API.qs({ org }));
+    if (d.organization) $("#orgName").textContent = d.organization.name + (d.organization.location ? " · " + d.organization.location : "");
+    if (d.user && d.user.name) $("#userName").textContent = ", " + d.user.name.split(" ")[0];
+    if (d.is_sample) $("#sampleTag").hidden = false;
+
+    const c = d.counts || {};
+    const k = [["My Complaints", c.mine], ["Open Issues", c.open], ["In Progress", c.in_progress], ["Resolved", c.resolved]];
+    $("#kpis").innerHTML = k.map(([l]) => `<div class="card kpi hover"><span class="num" data-n>0</span><span class="lbl">${l}</span></div>`).join("");
+    $("#kpis").querySelectorAll("[data-n]").forEach((el, i) => countUp(el, Number(k[i][1]) || 0));
+
+    $("#recent").innerHTML = (d.recent || []).length ? d.recent.map((r) => `
+      <a class="list-item" href="/complaints/${esc(r.id)}">
+        <div><div class="li-title">${esc(r.title)}</div><div class="li-meta">#${esc(r.id)} · ${fmtDate(r.created_at)}</div></div>
+        <div class="row" style="gap:6px">${priorityBadge(r.priority)}${badge(r.status)}</div>
+      </a>`).join("") : emptyState("No complaints yet", "Raise your first complaint to get started.", '<a class="btn btn-primary btn-sm" href="/complaints/new">Raise a Complaint</a>');
+
+    $("#common").innerHTML = (d.common_issues || []).map((i) => `<div class="list-item"><span class="li-title">${esc(i.title)}</span><span class="badge">${esc(i.count)} reports</span></div>`).join("") || '<p class="muted">Nothing to show yet.</p>';
+    $("#faqs").innerHTML = (d.faqs || []).map((f) => `<details style="padding:10px 0;border-bottom:1px solid var(--border)"><summary class="li-title" style="cursor:pointer">${esc(f.q)}</summary><p class="muted" style="margin-top:8px">${esc(f.a)}</p></details>`).join("") || '<p class="muted">No FAQs published.</p>';
+    $("#announcements").innerHTML = (d.announcements || []).map((a) => `<div class="list-item" style="display:block"><div class="li-title">${esc(a.title)}</div><div class="li-meta">${fmtDate(a.date)}</div><p class="muted" style="font-size:.9rem;margin-top:4px">${esc(a.body)}</p></div>`).join("") || '<p class="muted">No announcements.</p>';
+    $("#notes").innerHTML = (d.notifications || []).slice(0, 4).map((n) => `<div class="list-item"><span style="font-size:.9rem;${n.read ? "color:var(--muted)" : "font-weight:700"}">${esc(n.message)}</span></div>`).join("") || '<p class="muted">You are all caught up.</p>';
+  } catch (e) {
+    $("#recent").innerHTML = errorState(e); $("#kpis").innerHTML = "";
+  }
+})();
+</script>
+{% endblock %}

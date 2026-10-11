@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Notifications{% endblock %}
+{% block page_id %}notifications{% endblock %}
+
+{% block content %}
+<div class="container" style="max-width:760px">
+  <div class="page-head row between">
+    <div><p class="eyebrow">Inbox</p><h1>Notifications</h1></div>
+    <button class="btn btn-secondary btn-sm" id="markAll">Mark all read</button>
+  </div>
+  <div class="card" id="list" style="margin-bottom:var(--s8)"></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(async () => {
+  const { API, $, esc, fmtDateTime, skeleton, emptyState, errorState, toast } = HX;
+  const list = $("#list");
+  async function load() {
+    list.innerHTML = skeleton(3);
+    try {
+      /* Expected: { items:[{id,message,created_at,read,link}] } */
+      const d = await API.get("/api/notifications");
+      list.innerHTML = (d.items || []).length ? d.items.map((n) => `
+        <a class="list-item" href="${esc(n.link || "#")}">
+          <div><div class="li-title" style="${n.read ? "font-weight:500;color:var(--muted)" : ""}">${esc(n.message)}</div><div class="li-meta">${fmtDateTime(n.created_at)}</div></div>
+          ${n.read ? "" : '<span class="badge open">New</span>'}
+        </a>`).join("") : emptyState("You are all caught up", "New updates on your complaints will show up here.");
+    } catch (e) { list.innerHTML = errorState(e); }
+  }
+  $("#markAll").addEventListener("click", async () => {
+    try { await API.post("/api/notifications/read", {}); toast("All marked as read"); load(); } catch (e) { toast(e.message, "error"); }
+  });
+  load();
+})();
+</script>
+{% endblock %}
