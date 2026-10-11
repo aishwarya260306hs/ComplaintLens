@@ -1,8 +1,5 @@
-
 venv/
 .venv/
 __pycache__/
 .pytest_cache/
-*.pyc
-venv.zip
-pytest_cache.zip
+*.zip
