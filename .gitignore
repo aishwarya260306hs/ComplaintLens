@@ -1,11 +1,7 @@
-@"
 venv/
 .venv/
 __pycache__/
 .pytest_cache/
 .env
+*.zip
 backend/instance/secret.key
-ai_model.zip
-venv.zip
-pytest_cache.zip
-"@ | Set-Content .gitignore
